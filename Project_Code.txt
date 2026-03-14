@@ -1,0 +1,62 @@
+clc; clear; close all;
+% Parameters M = 16;
+k = log2(M); numBits = 1e5; EbN0_dB = 0:2:20;
+% Generate random bits
+dataBits = randi([0 1], numBits, 1);
+dataBits = dataBits(1:floor(length(dataBits)/k)*k);
+% Convert bits to symbols
+dataSymbols = reshape(dataBits, k, []).'; symbolIndices = bi2de(dataSymbols, 'left-msb');
+% QAM modulation
+qamTx = qammod(symbolIndices, M, 'gray', 'UnitAveragePower', true);
+
+% FSK parameters and modulation freqSep = 1;
+nsamp = 100;
+Fs = 100;
+fskTx = fskmod(symbolIndices, M, freqSep, nsamp, Fs);
+
+% Input and transmitted signals figure;
+subplot(3,1,1);
+stairs(dataBits(1:40), 'LineWidth', 1.5); title('Input Binary Signal (First 40 Bits)'); xlabel('Bit Index');
+ylabel('Bit Value'); ylim([-0.2 1.2]);
+grid on;
+subplot(3,1,2);
+plot(real(qamTx(1:100)), 'LineWidth', 1.2); title('QAM Transmitted Signal (First 100 Samples)'); xlabel('Sample Index');
+ylabel('Amplitude'); grid on;
+subplot(3,1,3);
+plot(real(fskTx(1:1000)), 'LineWidth', 1.2); title('FSK Transmitted Signal (First 1000 Samples)'); xlabel('Sample Index');
+ylabel('Amplitude'); grid on;
+% Ideal 16-QAM constellation figure;
+scatter(real(qamTx(1:2000)), imag(qamTx(1:2000)), 100, 'r', ... 'filled', 'MarkerEdgeColor', 'k');
+title('16-QAM Constellation Diagram');
+ 
+xlabel('In-Phase'); ylabel('Quadrature'); grid on;
+axis equal;
+% BER simulation
+berQAM = zeros(length(EbN0_dB),1); berFSK = zeros(length(EbN0_dB),1);
+for i = 1:length(EbN0_dB)
+snrQAM = EbN0_dB(i) + 10*log10(k);
+snrFSK = EbN0_dB(i) + 10*log10(k) - 10*log10(nsamp);
+
+qamRx = awgn(qamTx, snrQAM, 'measured'); fskRx = awgn(fskTx, snrFSK, 'measured');
+
+qamDemod = qamdemod(qamRx, M, 'gray', 'UnitAveragePower', true); fskDemod = fskdemod(fskRx, M, freqSep, nsamp, Fs);
+qamBits = de2bi(qamDemod, k, 'left-msb'); fskBits = de2bi(fskDemod, k, 'left-msb');
+
+qamBits = qamBits.'; fskBits = fskBits.'; qamBits = qamBits(:); fskBits = fskBits(:);
+[~, berQAM(i)] = biterr(dataBits, qamBits); [~, berFSK(i)] = biterr(dataBits, fskBits);
+end
+
+% Replace zeros for semilog plotting berQAM_plot = berQAM;
+berFSK_plot = berFSK; berQAM_plot(berQAM_plot == 0) = 1e-6; berFSK_plot(berFSK_plot == 0) = 1e-6;
+% BER comparison plot figure;
+semilogy(EbN0_dB, berQAM_plot, '-o', 'LineWidth', 2, 'MarkerSize', 8); hold on;
+semilogy(EbN0_dB, berFSK_plot, '-s', 'LineWidth', 2, 'MarkerSize', 8); grid on;
+xlabel('Eb/N0 (dB)'); ylabel('Bit Error Rate (BER)');
+title('BER Performance Comparison of 16-QAM and 16-FSK'); legend('16-QAM', '16-FSK', 'Location', 'southwest');
+% Noisy 16-QAM constellation at 10 dB snrExample = 10 + 10*log10(k);
+qamRxExample = awgn(qamTx, snrExample, 'measured');
+
+figure;
+plot(real(qamRxExample(1:2000)), imag(qamRxExample(1:2000)), '.'); title('Received 16-QAM Constellation at 10 dB Eb/N0');
+xlabel('In-Phase'); ylabel('Quadrature'); grid on;
+axis equal;
